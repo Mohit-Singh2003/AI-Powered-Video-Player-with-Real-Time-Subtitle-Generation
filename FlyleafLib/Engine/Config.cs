@@ -23,7 +23,7 @@ namespace FlyleafLib;
 /// </summary>
 public class Config : NotifyPropertyChanged
 {
-    static JsonSerializerOptions jsonOpts = new() { WriteIndented = true };
+    public static JsonSerializerOptions jsonOpts = new() { WriteIndented = true };
 
     public Config()
     {
@@ -41,7 +41,7 @@ public class Config : NotifyPropertyChanged
                 Plugins[plugin.Name].Add(opt.Key, opt.Value);
         }
         // save default plugin options for later
-        _PluginsDefault = Plugins;
+        defaultPlugins = Plugins;
 
         Player.config = this;
         Demuxer.config = this;
@@ -81,13 +81,13 @@ public class Config : NotifyPropertyChanged
 
         config.Subtitles.SetChildren();
 
-        // Restore the plugin options initialized by the constructor, as they are overwritten during deserialization.
+        // Restore the plugin options initialized by the constructor, as they are overwritten after deserialization.
 
         // Remove removed plugin options
         foreach (var plugin in config.Plugins)
         {
             // plugin deleted
-            if (!config._PluginsDefault.ContainsKey(plugin.Key))
+            if (!config.defaultPlugins.ContainsKey(plugin.Key))
             {
                 config.Plugins.Remove(plugin.Key);
                 continue;
@@ -96,7 +96,7 @@ public class Config : NotifyPropertyChanged
             // plugin option deleted
             foreach (var opt in plugin.Value)
             {
-                if (!config._PluginsDefault[plugin.Key].ContainsKey(opt.Key))
+                if (!config.defaultPlugins[plugin.Key].ContainsKey(opt.Key))
                 {
                     config.Plugins[plugin.Key].Remove(opt.Key);
                 }
@@ -104,7 +104,7 @@ public class Config : NotifyPropertyChanged
         }
 
         // Restore added plugin options
-        foreach (var plugin in config._PluginsDefault)
+        foreach (var plugin in config.defaultPlugins)
         {
             // plugin added
             if (!config.Plugins.ContainsKey(plugin.Key))
@@ -211,19 +211,20 @@ public class Config : NotifyPropertyChanged
     [JsonIgnore]
     public string           LoadedPath  { get; private set; }
 
-    public PlayerConfig     Player      { get; set; } = new PlayerConfig();
-    public DemuxerConfig    Demuxer     { get; set; } = new DemuxerConfig();
-    public DecoderConfig    Decoder     { get; set; } = new DecoderConfig();
-    public VideoConfig      Video       { get; set; } = new VideoConfig();
-    public AudioConfig      Audio       { get; set; } = new AudioConfig();
-    public SubtitlesConfig  Subtitles   { get; set; } = new SubtitlesConfig();
-    public DataConfig       Data        { get; set; } = new DataConfig();
+    public PlayerConfig     Player      { get; set; } = new();
+    public DemuxerConfig    Demuxer     { get; set; } = new();
+    public DecoderConfig    Decoder     { get; set; } = new();
+    public VideoConfig      Video       { get; set; } = new();
+    public AudioConfig      Audio       { get; set; } = new();
+    public SubtitlesConfig  Subtitles   { get; set; } = new();
+    public DataConfig       Data        { get; set; } = new();
 
     public Dictionary<string, ObservableDictionary<string, string>>
                             Plugins     { get; set; } = new();
     private
            Dictionary<string, ObservableDictionary<string, string>>
-                            _PluginsDefault;
+                            defaultPlugins;
+
     public class PlayerConfig : NotifyPropertyChanged
     {
         public PlayerConfig Clone()
@@ -1152,7 +1153,7 @@ public class Config : NotifyPropertyChanged
         /// Allowed input types to be searched locally for subtitles (empty list allows all types)
         /// </summary>
         public List<InputType>  SearchLocalOnInputType
-                                                    { get; set; } = new List<InputType>() { InputType.File, InputType.UNC, InputType.Torrent };
+                                                    { get; set; } = [ InputType.File, InputType.UNC, InputType.Torrent ];
 
         /// <summary>
         /// Whether to use online search plugins (see also <see cref="SearchOnlineOnInputType"/>)
@@ -1164,7 +1165,7 @@ public class Config : NotifyPropertyChanged
         /// Allowed input types to be searched online for subtitles (empty list allows all types)
         /// </summary>
         public List<InputType>  SearchOnlineOnInputType
-                                                    { get; set; } = new List<InputType>() { InputType.File, InputType.Torrent };
+                                                    { get; set; } = [ InputType.File, InputType.UNC, InputType.Torrent ];
 
         /// <summary>
         /// Subtitles parser (can be used for custom parsing)
@@ -1455,7 +1456,7 @@ public class EngineConfig
             path = LoadedPath;
         }
 
-        jsonOptions ??= new JsonSerializerOptions { WriteIndented = true };
+        jsonOptions ??= Config.jsonOpts;
 
         File.WriteAllText(path, JsonSerializer.Serialize(this, jsonOptions));
     }
