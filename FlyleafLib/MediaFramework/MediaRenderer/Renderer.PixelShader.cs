@@ -1,11 +1,12 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 
+using SharpGen.Runtime;
+using Vortice;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using Vortice;
 
 using FlyleafLib.MediaFramework.MediaDecoder;
 using FlyleafLib.MediaFramework.MediaFrame;
@@ -26,6 +27,7 @@ unsafe public partial class Renderer
     const string dPQToLinear    = "dPQToLinear";
     const string dHLGToLinear   = "dHLGToLinear";
     const string dTone          = "dTone";
+    const string dFilters       = "dFilters";
 
     enum PSCase : int
     {
@@ -88,8 +90,6 @@ unsafe public partial class Renderer
             if (Disposed || VideoStream == null)
                 return false;
 
-            VideoDecoder.DisposeFrame(LastFrame);
-
             curRatio    = VideoStream.AspectRatio.Value;
             VideoRect   = new RawRect(0, 0, (int)VideoStream.Width, (int)VideoStream.Height);
             rotationLinesize
@@ -97,32 +97,35 @@ unsafe public partial class Renderer
             UpdateRotation(_RotationAngle, false);
 
             var oldVP = videoProcessor;
-
-            // Defaults to D3D11VP
-            //VideoProcessor = !VideoDecoder.VideoAccelerated || D3D11VPFailed || Config.Video.VideoProcessor == VideoProcessors.Flyleaf || (Config.Video.VideoProcessor == VideoProcessors.Auto && isHDR && !Config.Video.Deinterlace) ? VideoProcessors.Flyleaf : VideoProcessors.D3D11;
-
-            // Defaults to FlyleafVP
+            var fieldType = Config.Video.DeInterlace == DeInterlace.Auto ? VideoStream.FieldOrder : Config.Video.DeInterlace;
             VideoProcessor = !D3D11VPFailed && VideoDecoder.VideoAccelerated &&
-                (Config.Video.Deinterlace || Config.Video.VideoProcessor == VideoProcessors.D3D11) ?
+                (Config.Video.VideoProcessor == VideoProcessors.D3D11 || (fieldType != DeInterlace.Progressive && Config.Video.VideoProcessor != VideoProcessors.Flyleaf)) ?
                 VideoProcessors.D3D11 : VideoProcessors.Flyleaf;
 
-            textDesc[0].BindFlags &= ~BindFlags.RenderTarget; // Only D3D11VP without ZeroCopy requires it
-            curPSCase = PSCase.None;
-            prevPSUniqueId = curPSUniqueId;
-            curPSUniqueId = "";
+            if (oldVP != videoProcessor)
+            {
+                VideoDecoder.DisposeFrame(LastFrame);
+                VideoDecoder.DisposeFrames();
+            }
+
+            if (fieldType != FieldType)
+            {
+                FieldType = fieldType;
+                vc?.VideoProcessorSetStreamFrameFormat(vp, 0, FieldType == DeInterlace.Progressive ? VideoFrameFormat.Progressive : (FieldType == DeInterlace.BottomField ? VideoFrameFormat.InterlacedBottomFieldFirst : VideoFrameFormat.InterlacedTopFieldFirst));
+                psBufferData.fieldType = FieldType;
+            }
+
+            textDesc[0].BindFlags
+                            &= ~BindFlags.RenderTarget; // Only D3D11VP without ZeroCopy requires it
+            curPSCase       = PSCase.None;
+            prevPSUniqueId  = curPSUniqueId;
+            curPSUniqueId   = "";
 
             Log.Debug($"Preparing planes for {VideoStream.PixelFormatStr} with {videoProcessor}");
             if ((VideoStream.PixelFormatDesc->flags & PixFmtFlags.Be) == 0) // We currently force SwsScale for BE (RGBA64/BGRA64 BE noted that could work as is?*)
             {
                 if (videoProcessor == VideoProcessors.D3D11)
                 {
-                    if (oldVP != videoProcessor)
-                    {
-                        VideoDecoder.DisposeFrames();
-                        Config.Video.Filters[VideoFilters.Brightness].Value = Config.Video.Filters[VideoFilters.Brightness].DefaultValue;
-                        Config.Video.Filters[VideoFilters.Contrast].Value   = Config.Video.Filters[VideoFilters.Contrast].DefaultValue;
-                    }
-
                     inputColorSpace = new()
                     {
                         Usage           = 0u,
@@ -162,11 +165,10 @@ unsafe public partial class Renderer
                 {
                     List<string> defines = [];
 
-                    if (oldVP != videoProcessor)
+                    if (HasFLFilters)
                     {
-                        VideoDecoder.DisposeFrames();
-                        Config.Video.Filters[VideoFilters.Brightness].Value = Config.Video.Filters[VideoFilters.Brightness].Minimum + ((Config.Video.Filters[VideoFilters.Brightness].Maximum - Config.Video.Filters[VideoFilters.Brightness].Minimum) / 2);
-                        Config.Video.Filters[VideoFilters.Contrast].Value   = Config.Video.Filters[VideoFilters.Contrast].Minimum + ((Config.Video.Filters[VideoFilters.Contrast].Maximum - Config.Video.Filters[VideoFilters.Contrast].Minimum) / 2);
+                        curPSUniqueId += "-";
+                        defines.Add(dFilters);
                     }
 
                     if (VideoStream.HDRFormat != HDRFormat.None)
@@ -182,7 +184,6 @@ unsafe public partial class Renderer
                             defines.Add(dPQToLinear);
                         }
 
-
                         defines.Add(dTone);
                     }
                     else if (VideoStream.ColorSpace == ColorSpace.BT2020)
@@ -190,6 +191,8 @@ unsafe public partial class Renderer
                         defines.Add(dBT2020);
                         curPSUniqueId += "b";
                     }
+
+                    psBufferData.yoffset = 1.0f / VideoStream.Height;
 
                     for (int i = 0; i < srvDesc.Length; i++)
                         srvDesc[i].ViewDimension = ShaderResourceViewDimension.Texture2D;
@@ -398,7 +401,7 @@ unsafe public partial class Renderer
                             curPSCase = PSCase.YUVPacked;
                             curPSUniqueId += ((int)curPSCase).ToString();
 
-                            psBufferData.texWidth = 1.0f / (VideoStream.Width >> 1);
+                            psBufferData.uvOffset = 1.0f / (VideoStream.Width >> 1);
                             textDesc[0].Width   = VideoStream.Width;
                             textDesc[0].Height  = VideoStream.Height;
 
@@ -416,10 +419,10 @@ unsafe public partial class Renderer
                             }
 
                             string header = @"
-        float  posx = input.Texture.x - (texWidth * 0.25);
-        float  fx = frac(posx / texWidth);
-        float  pos1 = posx + ((0.5 - fx) * texWidth);
-        float  pos2 = posx + ((1.5 - fx) * texWidth);
+        float  posx = input.Texture.x - (Config.uvOffset * 0.25);
+        float  fx = frac(posx / Config.uvOffset);
+        float  pos1 = posx + ((0.5 - fx) * Config.uvOffset);
+        float  pos2 = posx + ((1.5 - fx) * Config.uvOffset);
 
         float4 c1 = Texture1.Sample(Sampler, float2(pos1, input.Texture.y));
         float4 c2 = Texture1.Sample(Sampler, float2(pos2, input.Texture.y));
@@ -727,12 +730,29 @@ color = float4(Texture1.Sample(Sampler, input.Texture).rgb, 1.0);
             }
 
             av_frame_unref(frame);
+
             return mFrame;
+        }
+        catch (SharpGenException e)
+        {
+            av_frame_unref(frame);
+
+            if (e.ResultCode == Vortice.DXGI.ResultCode.DeviceRemoved || e.ResultCode == Vortice.DXGI.ResultCode.DeviceReset)
+            {
+                Log.Error($"Device Lost ({e.ResultCode} | {Device.DeviceRemovedReason} | {e.Message})");
+                Thread.Sleep(100);
+                VideoDecoder.handleDeviceReset = true; // We can't stop from RunInternal
+            }
+            else
+                Log.Error($"Failed to process frame ({e.Message})");
+
+            return null;
         }
         catch (Exception e)
         {
             av_frame_unref(frame);
             Log.Error($"Failed to process frame ({e.Message})");
+
             return null;
         }
     }

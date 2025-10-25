@@ -27,6 +27,12 @@
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
 
+        <ObjectDataProvider x:Key="DeInterlaceEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="flyleaf:DeInterlace"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
         <ObjectDataProvider x:Key="HDRtoSDRMethodEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="flyleaf:HDRtoSDRMethod"/>
@@ -53,35 +59,35 @@
                             Width="100"
                             ItemsSource="{x:Static flyleaf:AspectRatio.AspectRatios}"
                             SelectedItem="{Binding FL.Player. Config.Video.AspectRatio}" />
-                    </StackPanel>
 
-                    <StackPanel Orientation="Horizontal">
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Setter Property="Margin" Value="0 0 0 8" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ElementName=cmbAspectRatio, Path=Text}" Value="Custom">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
-                        <TextBlock
-                            Width="180"
-                            Text="Custom Ratio" />
                         <TextBox
-                            Width="100"
+                            Width="60"
+                            HorizontalContentAlignment="Right"
+                            VerticalContentAlignment="Center"
+                            Margin="10 0 0 0"
                             PreviewTextInput="ValidationRatio"
-                            Text="{Binding FL.PlayerConfig.Video.CustomAspectRatio, Converter={StaticResource StringToRationalConv}}" />
+                            Text="{Binding FL.PlayerConfig.Video.CustomAspectRatio, Converter={StaticResource StringToRationalConv}}">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignTextBox}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ElementName=cmbAspectRatio, Path=Text}" Value="Custom">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="180"
                             Text="Deinterlace" />
-                        <ToggleButton
-                            IsChecked="{Binding FL.PlayerConfig.Video.Deinterlace}" />
+                        <ComboBox
+                            Width="100"
+                            ItemsSource="{Binding Source={StaticResource DeInterlaceEnum}}"
+                            SelectedItem="{Binding FL.PlayerConfig.Video.DeInterlace}" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal">
@@ -191,7 +197,39 @@
             </GroupBox>
 
             <GroupBox Header="Filters">
-                <ItemsControl ItemsSource="{Binding FL.PlayerConfig.Video.Filters.Values}">
+                <ItemsControl>
+                    <ItemsControl.Style>
+                        <Style TargetType="ItemsControl">
+                            <Setter Property="ItemsSource" Value="{x:Null}"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding FL.PlayerConfig.Video.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.Auto}"/>
+                                        <Condition Binding="{Binding FL.Player.renderer.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.Flyleaf}"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <MultiDataTrigger.Setters>
+                                        <Setter Property="ItemsSource" Value="{Binding FL.PlayerConfig.Video.Filters.Values}"/>
+                                    </MultiDataTrigger.Setters>
+                                </MultiDataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding FL.PlayerConfig.Video.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.Auto}"/>
+                                        <Condition Binding="{Binding FL.Player.renderer.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.D3D11}"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <MultiDataTrigger.Setters>
+                                        <Setter Property="ItemsSource" Value="{Binding FL.PlayerConfig.Video.D3Filters.Values}"/>
+                                    </MultiDataTrigger.Setters>
+                                </MultiDataTrigger>
+                                <DataTrigger Binding="{Binding FL.PlayerConfig.Video.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.Flyleaf}">
+                                    <Setter Property="ItemsSource" Value="{Binding FL.PlayerConfig.Video.Filters.Values}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding FL.PlayerConfig.Video.VideoProcessor}" Value="{x:Static flyleaf:VideoProcessors.D3D11}">
+                                    <Setter Property="ItemsSource" Value="{Binding FL.PlayerConfig.Video.D3Filters.Values}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ItemsControl.Style>
+
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel

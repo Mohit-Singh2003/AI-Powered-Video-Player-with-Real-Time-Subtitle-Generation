@@ -386,6 +386,8 @@ unsafe partial class Player
                 if (VideoDemuxer.Interrupter.Timedout)
                     break;
 
+                renderer.CurFieldType = renderer.FieldType;
+
                 OnBufferingStarted();
                 MediaBuffer();
                 requiresBuffering = false;
@@ -463,8 +465,8 @@ unsafe partial class Player
 
             if (aFrame != null)
             {
-                curAudioDeviceDelay = Audio.GetDeviceDelay();
-                audioBufferedDuration = Audio.GetBufferedDuration();
+                curAudioDeviceDelay     = Audio.GetDeviceDelay();
+                audioBufferedDuration   = Audio.GetBufferedDuration();
                 aDistanceMs = (int) ((((aFrame.timestamp - startTicks) / speed) - (elapsedTicks - curAudioDeviceDelay)) / 10000);
 
                 // Try to keep the audio buffer full enough to avoid audio crackling (up to 50ms)
@@ -614,7 +616,22 @@ unsafe partial class Player
                             UI(() => UpdateCurTime());
                     }
 
-                VideoDecoder.Frames.TryDequeue(out vFrame);
+                if (renderer.FieldType == DeInterlace.Progressive)
+                    VideoDecoder.Frames.TryDequeue(out vFrame);
+                else
+                {
+                    if (renderer.CurFieldType != renderer.FieldType)
+                    {
+                        VideoDecoder.Frames.TryDequeue(out vFrame);
+                        renderer.CurFieldType = renderer.FieldType;
+                    }
+                    else
+                    {
+                        renderer.CurFieldType = renderer.FieldType == DeInterlace.TopField ? DeInterlace.BottomField : DeInterlace.TopField;
+                        vFrame.timestamp += renderer.VideoStream.FrameDuration2;
+                    }
+                }
+
                 if (vFrame != null && Config.Player.MaxLatency != 0)
                     CheckLatency();
             }
@@ -635,6 +652,7 @@ unsafe partial class Player
                 Video.framesDropped++;
                 VideoDecoder.DisposeFrame(vFrame);
                 VideoDecoder.Frames.TryDequeue(out vFrame);
+                renderer.CurFieldType = renderer.FieldType;
             }
 
             // Set the current time to SubtitleManager in a loop

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Data;
 
 using FlyleafLib.Controls.WPF;
 using FlyleafLib.MediaFramework.MediaDecoder;
@@ -36,7 +37,7 @@ public class Config : NotifyPropertyChanged
 
             if (defaultOptions == null || defaultOptions.Count == 0) continue;
 
-            Plugins.Add(plugin.Name, new ObservableDictionary<string, string>());
+            Plugins.Add(plugin.Name, []);
             foreach (var opt in defaultOptions)
                 Plugins[plugin.Name].Add(opt.Key, opt.Value);
         }
@@ -95,12 +96,8 @@ public class Config : NotifyPropertyChanged
 
             // plugin option deleted
             foreach (var opt in plugin.Value)
-            {
                 if (!config.defaultPlugins[plugin.Key].ContainsKey(opt.Key))
-                {
                     config.Plugins[plugin.Key].Remove(opt.Key);
-                }
-            }
         }
 
         // Restore added plugin options
@@ -115,12 +112,8 @@ public class Config : NotifyPropertyChanged
 
             // plugin option added
             foreach (var opt in plugin.Value)
-            {
                 if (!config.Plugins[plugin.Key].ContainsKey(opt.Key))
-                {
                     config.Plugins[plugin.Key][opt.Key] = opt.Value;
-                }
-            }
         }
 
         config.UpdateDefault();
@@ -340,11 +333,6 @@ public class Config : NotifyPropertyChanged
         /// Margin time to move back forward when doing an exact seek (ticks)
         /// </summary>
         public long     SeekAccurateFixMargin       { get; set => Set(ref field, value); } = TimeSpan.FromMilliseconds(0).Ticks;
-
-        /// <summary>
-        /// Margin time to move back forward when getting frame (ticks)
-        /// </summary>
-        public long     SeekGetFrameFixMargin       { get; set => Set(ref field, value); } = TimeSpan.FromMilliseconds(3000).Ticks;
 
         /// <summary>
         /// Snapshot encoding will be used (valid formats bmp, png, jpg/jpeg)
@@ -673,17 +661,23 @@ public class Config : NotifyPropertyChanged
         bool _LowDelay;
 
         public Dictionary<string, string>
-                                AudioCodecOpt       { get; set; } = new();
+                                AudioCodecOpt       { get; set; } = [];
         public Dictionary<string, string>
-                                VideoCodecOpt       { get; set; } = new();
+                                VideoCodecOpt       { get; set; } = [];
         public Dictionary<string, string>
-                                SubtitlesCodecOpt   { get; set; } = new();
+                                SubtitlesCodecOpt   { get; set; } = [];
 
         public Dictionary<string, string> GetCodecOptPtr(MediaType type)
             => type == MediaType.Video ? VideoCodecOpt : type == MediaType.Audio ? AudioCodecOpt : SubtitlesCodecOpt;
     }
     public class VideoConfig : NotifyPropertyChanged
     {
+        public VideoConfig()
+        {
+            BindingOperations.EnableCollectionSynchronization(Filters, lockFilters);
+            BindingOperations.EnableCollectionSynchronization(D3Filters, lockD3Filters);
+        }
+
         public VideoConfig Clone()
         {
             VideoConfig video = (VideoConfig) MemberwiseClone();
@@ -797,15 +791,8 @@ public class Config : NotifyPropertyChanged
         public Vortice.DXGI.PresentFlags
                                 PresentFlags                { get; set; } = Vortice.DXGI.PresentFlags.DoNotWait;
 
-        /// <summary>
-        /// Enables the video processor to perform post process deinterlacing
-        /// (D3D11 video processor should be enabled and support bob deinterlace method)
-        /// </summary>
-        public bool             Deinterlace                 { get=> _Deinterlace;   set { if (Set(ref _Deinterlace, value)) player?.renderer?.UpdateDeinterlace(); } }
-        bool _Deinterlace;
-
-        public bool             DeinterlaceBottomFirst      { get=> _DeinterlaceBottomFirst; set { if (Set(ref _DeinterlaceBottomFirst, value)) player?.renderer?.UpdateDeinterlace(); } }
-        bool _DeinterlaceBottomFirst;
+        public DeInterlace      DeInterlace                 { get => _DeInterlace;  set { if (Set(ref _DeInterlace, value)) player?.renderer?.UpdateDeinterlace(); } }
+        DeInterlace _DeInterlace = DeInterlace.Auto;
 
         /// <summary>
         /// The HDR to SDR method that will be used by the pixel shader
@@ -818,7 +805,7 @@ public class Config : NotifyPropertyChanged
         /// SDR Display Peak Luminance (will be used for HDR to SDR conversion)
         /// </summary>
         public unsafe float     SDRDisplayNits              { get => _SDRDisplayNits; set { if (Set(ref _SDRDisplayNits, value) && player != null && player.VideoDecoder.VideoStream != null && player.VideoDecoder.VideoStream.ColorSpace == ColorSpace.BT2020) player.renderer.UpdateHDRtoSDR(); } }
-        float _SDRDisplayNits = 200f; // TODO: Retrieve this through Vortice (output6) but currently not supported
+        float _SDRDisplayNits = Engine.Video.RecommendedLuminance;
 
         /// <summary>
         /// Whether the renderer will use 10-bit swap chaing or 8-bit output
@@ -856,19 +843,16 @@ public class Config : NotifyPropertyChanged
         internal void OnD2DDraw(Renderer renderer, Vortice.Direct2D1.ID2D1DeviceContext context)
             => D2DDraw?.Invoke(renderer, context);
 
-        public Dictionary<VideoFilters, VideoFilter> Filters { get ; set; } = DefaultFilters();
-
-        public static Dictionary<VideoFilters, VideoFilter> DefaultFilters()
-        {
-            Dictionary<VideoFilters, VideoFilter> filters = [];
-
-            var available = Enum.GetValues(typeof(VideoFilters));
-
-            foreach(object filter in available)
-                filters.Add((VideoFilters)filter, new VideoFilter((VideoFilters)filter));
-
-            return filters;
-        }
+        /// <summary>
+        /// When you change a filter value from one VP will update also the other if exists (however might not exact same picture output)
+        /// </summary>
+        public bool             SyncVPFilters               { get; set; } = true;
+        public ObservableDictionary<VideoFilters, FLVideoFilter> Filters
+                                                            { get ; set; } = [];
+        public ObservableDictionary<VideoFilters, D3VideoFilter> D3Filters
+                                                            { get ; set; } = [];
+        internal readonly object lockFilters    = new();
+        internal readonly object lockD3Filters  = new();
     }
     public class AudioConfig : NotifyPropertyChanged
     {

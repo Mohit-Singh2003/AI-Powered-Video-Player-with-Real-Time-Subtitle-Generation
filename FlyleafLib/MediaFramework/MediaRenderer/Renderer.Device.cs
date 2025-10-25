@@ -1,7 +1,6 @@
 ﻿using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-
 using Vortice;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -99,7 +98,7 @@ public unsafe partial class Renderer
     ID3D11PixelShader   ShaderBGRA;
 
     ID3D11Buffer        psBuffer;
-    PSBufferType        psBufferData;
+    PSBufferType        psBufferData = new();
 
     ID3D11Buffer        vsBuffer;
     VSBufferType        vsBufferData;
@@ -134,7 +133,7 @@ public unsafe partial class Renderer
                 #endif
 
                 // Finding User Definied adapter
-                if (!string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) && Config.Video.GPUAdapter.ToUpper() != "WARP")
+                if (!string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) && !Config.Video.GPUAdapter.Equals("WARP", StringComparison.CurrentCultureIgnoreCase))
                 {
                     for (uint i=0; Engine.Video.Factory.EnumAdapters1(i, out adapter).Success; i++)
                     {
@@ -155,7 +154,7 @@ public unsafe partial class Renderer
                 }
 
                 // Creating WARP (force by user or us after late failure)
-                if (!string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) && Config.Video.GPUAdapter.ToUpper() == "WARP")
+                if (!string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) && Config.Video.GPUAdapter.Equals("WARP", StringComparison.CurrentCultureIgnoreCase))
                     D3D11.D3D11CreateDevice(null, DriverType.Warp, creationFlagsWarp, featureLevels, out tempDevice).CheckError();
 
                 // Creating User Defined or Default
@@ -252,7 +251,7 @@ public unsafe partial class Renderer
                     ByteWidth       = (uint)(sizeof(PSBufferType) + (16 - (sizeof(PSBufferType) % 16)))
                 });
                 context.PSSetConstantBuffer(0, psBuffer);
-                UpdateHDRtoSDR(false); // TODO: Passing Config -> psBuffer (currently mixed with Initialize filters)
+                psBufferData.fieldType = FieldType;
 
                 // subs
                 ShaderBGRA = ShaderCompiler.CompilePS(Device, "bgra", @"color = float4(Texture1.Sample(Sampler, input.Texture).rgba);", null);
@@ -270,7 +269,7 @@ public unsafe partial class Renderer
 
             } catch (Exception e)
             {
-                if (string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) || Config.Video.GPUAdapter.ToUpper() != "WARP")
+                if (string.IsNullOrWhiteSpace(Config.Video.GPUAdapter) || !Config.Video.GPUAdapter.Equals("WARP", StringComparison.OrdinalIgnoreCase))
                 {
                     try { if (Device != null) Log.Warn($"Device Remove Reason = {Device.DeviceRemovedReason.Description}"); } catch { } // For troubleshooting
 
@@ -457,6 +456,23 @@ public unsafe partial class Renderer
         }
     }
 
+    void HandleDeviceReset()
+    {
+        if (VideoDecoder != null && VideoStream != null)
+        {
+            var running = VideoDecoder.IsRunning;
+            var stream = VideoStream;
+            VideoDecoder.Dispose();
+            Flush();
+            VideoDecoder.Open(stream); // Should Re-ConfigPlanes()
+            VideoDecoder.keyPacketRequired = true;
+            if (running)
+                VideoDecoder.Start();
+        }
+        else
+            Flush();
+    }
+
     #if DEBUG
     public static void ReportLiveObjects()
     {
@@ -475,13 +491,32 @@ public unsafe partial class Renderer
     struct PSBufferType
     {
         public int coefsIndex;
-        public float brightness;
-        public float contrast;
-        public float hue;
-        public float saturation;
-        public float texWidth;
+
+        // Filters
+        public float brightness;    // -0.5  to 0.5     (0.0 default)
+        public float contrast;      //  0.0  to 2.0     (1.0 default)
+        public float hue;           // -3.14 to 3.14    (0.0 default)
+        public float saturation;    //  0.0  to 2.0     (1.0 default)
+
+        public float uvOffset;
+        public float yoffset;
         public HDRtoSDRMethod tonemap;
         public float hdrtone;
+        public DeInterlace fieldType;
+
+        private float _pad1;
+        private float _pad2;
+
+        public PSBufferType()
+        {
+            brightness  = 0;
+            contrast    = 1;
+            hue         = 0;
+            saturation  = 1;
+
+            tonemap     = HDRtoSDRMethod.Hable;
+            fieldType   = DeInterlace.Progressive;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -121,16 +121,17 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="PanXOffset"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.PanXOffset}"/>
+                    <TextBlock Style="{StaticResource TextInfo}" Text="Pan Offsets"/>
+                    <TextBlock Style="{StaticResource TextValue}">
+                        <TextBlock Style="{StaticResource TextValue}">
+                            <Run Text="{Binding Player.PanXOffset, Mode=OneWay}"/>
+                            <Run Text="|"/>
+                            <Run Text="{Binding Player.PanYOffset, Mode=OneWay}"/>
+                        </TextBlock>
+                    </TextBlock>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="PanYOffset"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.PanYOffset}"/>
-                </StackPanel>
-
-                 <StackPanel Orientation="Horizontal">
                     <TextBlock Style="{StaticResource TextInfo}" Text="Rotation"/>
                     <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Rotation}"/>
                 </StackPanel>
@@ -229,18 +230,17 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="Config|AspectRatio"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Config.Video.AspectRatio}"/>
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="CustomAspectRatio"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Config.Video.CustomAspectRatio}"/>
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal">
                     <TextBlock Style="{StaticResource TextInfo}" Text="AspectRatio"/>
                     <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.AspectRatio}"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource TextInfo}" Text="Size"/>
+                    <TextBlock Style="{StaticResource TextValue}">
+                        <Run Text="{Binding Player.Video.Width, Mode=OneWay}"/>
+                        <Run Text="x"/>
+                        <Run Text="{Binding Player.Video.Height, Mode=OneWay}"/>
+                    </TextBlock>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
@@ -249,13 +249,8 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="Width"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.Width}"/>
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="Height"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.Height}"/>
+                    <TextBlock Style="{StaticResource TextInfo}" Text="Color Format"/>
+                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.ColorFormat}"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
@@ -269,8 +264,13 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="ProfileMismatch"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Config.Decoder.AllowProfileMismatch}"/>
+                    <TextBlock Style="{StaticResource TextInfo}" Text="DeInterlace"/>
+                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.renderer.FieldType}"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
+                    <TextBlock Style="{StaticResource TextInfo}" Text="ZeroCopy"/>
+                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.ZeroCopy}"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
@@ -282,12 +282,6 @@
                     <TextBlock Style="{StaticResource TextInfo}" Text="VideoProcessor"/>
                     <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.renderer.VideoProcessor}"/>
                 </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
-                    <TextBlock Style="{StaticResource TextInfo}" Text="ZeroCopy"/>
-                    <TextBlock Style="{StaticResource TextValue}" Text="{Binding Player.Video.ZeroCopy}"/>
-                </StackPanel>
-
             </StackPanel>
 
             <!-- Subtitles -->
