@@ -1559,6 +1559,7 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
         surfaceClosed = true;
         Dispose();
     }
+    public void CloseCanceled() => surfaceClosing = false; // TBR: Better way of handling Closing/Canceled
     private void Surface_Closing(object sender, CancelEventArgs e) => surfaceClosing = true;
     private void Overlay_Closed(object sender, EventArgs e)
     {
@@ -1899,6 +1900,8 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
         if (ReplicaPlayer != null)
             ReplicaPlayer.renderer.SetChildHandle(SurfaceHandle);
 
+        Surface.IsVisibleChanged
+                            += Surface_IsVisibleChanged;
         Surface.Closed      += Surface_Closed;
         Surface.Closing     += Surface_Closing;
         Surface.KeyDown     += Surface_KeyDown;
@@ -1919,6 +1922,23 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
             Host_Loaded(null, null);
 
         SurfaceCreated?.Invoke(this, new());
+    }
+
+    private void Surface_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (!Surface.IsVisible || Overlay == null)
+            return;
+
+        /* Out of monitor's bound issue
+         * When hiding the surface and showing it back, windows will consider it's position/size invalid and will try to fix it without sending any position/size changed events
+         * C# ActualWidth/ActualHeight will not be updated and the overlay will not fit properly to the surface
+         * 
+         * TBR: Consider when showing the window to prevent windows changing its position/size (requires win32 API and it seems that causes more issues)?
+         */
+        RECT surf = new();
+        GetWindowRect(SurfaceHandle, ref surf);
+        SetWindowPos(OverlayHandle, IntPtr.Zero, 0, 0, (int)Math.Round((surf.Right - surf.Left) * DpiX), (int)Math.Round((surf.Bottom - surf.Top) * DpiY),
+            (uint)(SetWindowPosFlags.SWP_NOZORDER | SetWindowPosFlags.SWP_NOACTIVATE));
     }
 
     private void Surface_DpiChanged(object sender, DpiChangedEventArgs e)
@@ -2265,8 +2285,16 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
             if (CornerRadius != zeroCornerRadius)
                 ((Border)Surface.Content).CornerRadius = zeroCornerRadius;
 
-            Surface.WindowState = WindowState.Maximized;
+            if (Overlay != null)
+            {
+                Overlay.Hide();
+                Surface.WindowState = WindowState.Maximized;
+                Overlay.Show();
+            }
+            else
+                Surface.WindowState = WindowState.Maximized;
 
+            Player?.Activity.RefreshFullActive();
             // If it was above the borders and double click (mouse didn't move to refresh)
             Surface.Cursor = Cursors.Arrow;
             if (Overlay != null)
@@ -2309,7 +2337,7 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
     {
         if (Overlay != null)
             SetWindowPos(OverlayHandle, IntPtr.Zero, 0, 0, (int)Math.Round(Surface.ActualWidth * DpiX), (int)Math.Round(Surface.ActualHeight * DpiY),
-                (uint)(SetWindowPosFlags.SWP_NOZORDER | SetWindowPosFlags.SWP_NOMOVE | SetWindowPosFlags.SWP_NOACTIVATE));
+                (uint)(SetWindowPosFlags.SWP_NOZORDER | SetWindowPosFlags.SWP_NOACTIVATE));
     }
 
     public void ResetVisibleRect()
@@ -2363,6 +2391,8 @@ public class FlyleafHost : ContentControl, IHostPlayer, IDisposable
                 if (isMouseBindingsSubscribedSurface)
                     SetMouseSurface();
 
+                Surface.IsVisibleChanged
+                                    -= Surface_IsVisibleChanged;
                 Surface.Closed      -= Surface_Closed;
                 Surface.Closing     -= Surface_Closing;
                 Surface.KeyDown     -= Surface_KeyDown;
