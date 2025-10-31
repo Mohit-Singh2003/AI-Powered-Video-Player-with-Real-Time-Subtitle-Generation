@@ -142,7 +142,7 @@ public class MainWindowVM : Bindable
             if (!args.Success || args.IsSubtitles)
             {
                 if (!args.IsSubtitles)
-                    FL.Player.renderer?.ClearScreenForce();
+                    FL.Player.renderer?.ClearScreen(true);
 
                 return;
             }

@@ -169,7 +169,6 @@ public partial class DecoderContext
         }
 
         ClosedAudioStream = null;
-        MainDemuxer = !VideoDemuxer.Disposed ? VideoDemuxer : AudioDemuxer;
 
         if (CanInfo) Log.Info($"[OpenAudioStream] #{(args.OldStream != null ? args.OldStream.StreamIndex.ToString() : "_")} => #{(args.Stream != null ? args.Stream.StreamIndex.ToString() : "_")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
         OpenAudioStreamCompleted?.Invoke(this, args);
@@ -183,7 +182,6 @@ public partial class DecoderContext
         }
 
         ClosedVideoStream = null;
-        MainDemuxer = !VideoDemuxer.Disposed ? VideoDemuxer : AudioDemuxer;
 
         if (CanInfo) Log.Info($"[OpenVideoStream] #{(args.OldStream != null ? args.OldStream.StreamIndex.ToString() : "_")} => #{(args.Stream != null ? args.Stream.StreamIndex.ToString() : "_")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
         OpenVideoStreamCompleted?.Invoke(this, args);
@@ -220,7 +218,6 @@ public partial class DecoderContext
         }
 
         ClosedAudioStream = null;
-        MainDemuxer = !VideoDemuxer.Disposed ? VideoDemuxer : AudioDemuxer;
 
         if (CanInfo) Log.Info($"[OpenExternalAudioStream] {(args.OldExtStream != null ? args.OldExtStream.Url : "None")} => {(args.ExtStream != null ? args.ExtStream.Url : "None")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
         OpenExternalAudioStreamCompleted?.Invoke(this, args);
@@ -234,7 +231,6 @@ public partial class DecoderContext
         }
 
         ClosedVideoStream = null;
-        MainDemuxer = !VideoDemuxer.Disposed ? VideoDemuxer : AudioDemuxer;
 
         if (CanInfo) Log.Info($"[OpenExternalVideoStream] {(args.OldExtStream != null ? args.OldExtStream.Url : "None")} => {(args.ExtStream != null ? args.ExtStream.Url : "None")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
         OpenExternalVideoStreamCompleted?.Invoke(this, args);
@@ -479,8 +475,6 @@ public partial class DecoderContext
 
             if (Config.Data.Enabled)
                 OpenSuggestedData();
-
-            MainDemuxer ??= VideoDemuxer;
 
             LoadPlaylistChapters();
 
@@ -998,11 +992,14 @@ public partial class DecoderContext
 
     private void LoadPlaylistChapters()
     {
-        if (Playlist.Selected != null && Playlist.Selected.Chapters.Count > 0 && MainDemuxer.Chapters.Count == 0)
+        if (VideoDemuxer.Disposed)
+            return;
+
+        if (Playlist.Selected != null && Playlist.Selected.Chapters.Count > 0 && VideoDemuxer.Chapters.Count == 0)
         {
             foreach (var chapter in Playlist.Selected.Chapters)
             {
-                MainDemuxer.Chapters.Add(chapter);
+                VideoDemuxer.Chapters.Add(chapter);
             }
         }
     }

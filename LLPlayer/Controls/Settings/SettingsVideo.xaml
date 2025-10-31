@@ -87,6 +87,14 @@
                     <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="180"
+                            Text="Double Rate" />
+                        <ToggleButton
+                            IsChecked="{Binding FL.PlayerConfig.Video.DoubleRate}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock
+                            Width="180"
                             Text="Super Resolution" />
                         <ToggleButton
                             IsChecked="{Binding FL.PlayerConfig.Video.SuperResolution}" />

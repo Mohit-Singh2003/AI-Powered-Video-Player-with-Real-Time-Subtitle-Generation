@@ -66,30 +66,32 @@ unsafe partial class Player
     {
         Config.Audio.SetDelay(0);
         Audio.Refresh();
-        canPlay = Video.IsOpened || Audio.IsOpened;
-        isLive  = MainDemuxer.IsLive;
-        duration= MainDemuxer.Duration;
+        canPlay     = Video.IsOpened || Audio.IsOpened;
+        UpdateMainDemuxer();
+        isLive      = MainDemuxer.IsLive;
+        duration    = MainDemuxer.Duration;
 
         UIAdd(() =>
         {
-            IsLive  = IsLive;
-            CanPlay = CanPlay;
-            Duration= Duration;
+            IsLive  = isLive;
+            CanPlay = canPlay;
+            Duration= duration;
         });
         UIAll();
     }
     private void Decoder_OpenVideoStreamCompleted(object sender, OpenVideoStreamCompletedArgs e)
     {
         Video.Refresh();
-        canPlay = Video.IsOpened || Audio.IsOpened;
-        isLive  = MainDemuxer.IsLive;
-        duration= MainDemuxer.Duration;
+        canPlay     = Video.IsOpened || Audio.IsOpened;
+        UpdateMainDemuxer();
+        isLive      = MainDemuxer.IsLive;
+        duration    = MainDemuxer.Duration;
 
         UIAdd(() =>
         {
-            IsLive  = IsLive;
-            CanPlay = CanPlay;
-            Duration= Duration;
+            IsLive  = isLive;
+            CanPlay = canPlay;
+            Duration= duration;
         });
         UIAll();
     }
@@ -145,7 +147,7 @@ unsafe partial class Player
         if (!e.Success)
         {
             canPlay = Video.IsOpened || Audio.IsOpened;
-            UIAdd(() => CanPlay = CanPlay);
+            UIAdd(() => CanPlay = canPlay);
             UIAll();
         }
     }
@@ -154,7 +156,7 @@ unsafe partial class Player
         if (!e.Success)
         {
             canPlay = Video.IsOpened || Audio.IsOpened;
-            UIAdd(() => CanPlay = CanPlay);
+            UIAdd(() => CanPlay = canPlay);
             UIAll();
         }
     }
@@ -208,15 +210,15 @@ unsafe partial class Player
                 duration= MainDemuxer.Duration;
                 UIAdd(() =>
                 {
-                    IsLive  = IsLive;
-                    Duration= Duration;
+                    IsLive  = isLive;
+                    Duration= duration;
                 });
             }
 
             UIAdd(() =>
             {
-                LastError   = LastError;
-                Status      = Status;
+                LastError   = lastError;
+                Status      = status;
             });
 
             UIAll();
@@ -358,8 +360,8 @@ unsafe partial class Player
 
             UIAdd(() =>
             {
-                LastError   = LastError;
-                Status      = Status;
+                LastError   = lastError;
+                Status      = status;
             });
 
             UIAll();
@@ -421,15 +423,15 @@ unsafe partial class Player
                 duration= MainDemuxer.Duration;
                 UIAdd(() =>
                 {
-                    IsLive  = IsLive;
-                    Duration= Duration;
+                    IsLive  = isLive;
+                    Duration= duration;
                 });
             }
 
             UIAdd(() =>
             {
-                LastError   = LastError;
-                Status      = Status;
+                LastError   = lastError;
+                Status      = status;
             });
 
             UIAll();
@@ -483,11 +485,13 @@ unsafe partial class Player
             if (LastError != null)
             {
                 lastError = null;
-                UI(() => LastError = LastError);
+                UI(() => LastError = lastError);
             }
 
             if (extStream is ExternalAudioStream)
             {
+                bool shouldStartAudioScreamerForVideo = isScreamerVASDAudio;
+                StopScreamerVASDAudio();
                 if (decoder.VideoStream == null)
                     requiresBuffering = true;
 
@@ -511,6 +515,9 @@ unsafe partial class Player
                 }
 
                 isAudioSwitch = false;
+
+                if (status == Status.Playing && !requiresBuffering && shouldStartAudioScreamerForVideo)
+                    StartScreamerVASDAudio();
             }
             else if (extStream is ExternalVideoStream)
             {
@@ -602,7 +609,7 @@ unsafe partial class Player
         try
         {
             long delay = DateTime.UtcNow.Ticks;
-            long fromEnd = Duration - CurTime;
+            long fromEnd = duration - curTime;
 
             if (stream.Demuxer.Type == MediaType.Video)
             {
@@ -633,13 +640,16 @@ unsafe partial class Player
                 // Wait for at least on package before seek to update the HLS context first_time
                 if (stream.Demuxer.IsHLSLive)
                 {
-                    while (stream.Demuxer.IsRunning && stream.Demuxer.GetPacketsPtr(stream).Count < 3)
+                    var curDemuxer = stream.Demuxer;
+
+                    int retries = 1000; // 20sec ? | For audio check also VideoPackets
+                    while (stream.Demuxer.IsRunning && stream.Demuxer.GetPacketsPtr(stream).Count < 3 && stream.Demuxer.VideoPackets.Count < 3 && retries-- > 0)
                         Thread.Sleep(20);
 
-                    ReSync(stream, (int) ((Duration - fromEnd - (DateTime.UtcNow.Ticks - delay))/ 10000));
+                    ReSync(stream, (int)((duration - fromEnd - (DateTime.UtcNow.Ticks - delay)) / 10000));
                 }
                 else
-                    ReSync(stream, (int) (CurTime / 10000), true);
+                    ReSync(stream, (int) (curTime / 10000), true);
             }
             else
                 isVideoSwitch = false;
@@ -685,11 +695,11 @@ unsafe partial class Player
     string playerSessionTag = "_session";
     private Session GetCurrentSession()
     {
-        Session session = new();
-        var item = Playlist.Selected;
+        Session session     = new();
+        var item            = Playlist.Selected;
 
-        session.Url = Playlist.Url;
-        session.PlaylistItem = item.Index;
+        session.Url         = Playlist.Url;
+        session.PlaylistItem= item.Index;
 
         if (item.ExternalAudioStream != null)
             session.ExternalAudioStream = item.ExternalAudioStream.Index;
@@ -709,10 +719,10 @@ unsafe partial class Player
         if (decoder.VideoStream != null)
             session.VideoStream = decoder.VideoStream.StreamIndex;
 
-        session.CurTime = CurTime;
-        session.AudioDelay = Config.Audio.Delay;
+        session.CurTime         = CurTime;
+        session.AudioDelay      = Config.Audio.Delay;
         // TODO: L: Support secondary subtitles
-        session.SubtitlesDelay = Config.Subtitles[0].Delay;
+        session.SubtitlesDelay  = Config.Subtitles[0].Delay;
 
         return session;
     }
@@ -747,7 +757,6 @@ unsafe partial class Player
             else
                 decoder.Seek(syncMs, false, false);
 
-            aFrame          = null;
             isAudioSwitch   = false;
             isVideoSwitch   = false;
             for (int i = 0; i < subNum; i++)
@@ -773,10 +782,16 @@ unsafe partial class Player
         {
             if (stream.Demuxer.Type == MediaType.Audio)
             {
+                bool shouldStartAudioScreamerForVideo = isScreamerVASDAudio;
+                StopScreamerVASDAudio();
+
                 isAudioSwitch = true;
                 decoder.SeekAudio();
-                aFrame = null;
                 isAudioSwitch = false;
+
+                if (status == Status.Playing && !requiresBuffering && shouldStartAudioScreamerForVideo)
+                    StartScreamerVASDAudio();
+
             }
             else if (stream.Demuxer.Type == MediaType.Subs)
             {

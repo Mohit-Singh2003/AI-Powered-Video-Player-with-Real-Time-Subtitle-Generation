@@ -18,10 +18,10 @@ partial class Player
     public event EventHandler<PlaybackStoppedArgs> PlaybackStopped;
     protected virtual void OnPlaybackStopped(string error = null)
     {
-        if (error != null && LastError == null)
+        if (error != null && lastError == null)
         {
             lastError = error;
-            UI(() => LastError = LastError);
+            UI(() => LastError = lastError);
         }
 
         PlaybackStopped?.Invoke(this, new PlaybackStoppedArgs(error));
@@ -39,127 +39,131 @@ partial class Player
     {
         lock (lockActions)
         {
-            if (!CanPlay || Status == Status.Playing || Status == Status.Ended)
+            if (!canPlay || status == Status.Playing || status == Status.Ended)
                 return;
 
             status = Status.Playing;
-            UI(() => Status = Status);
+            UI(() => Status = status);
         }
 
         while (taskPlayRuns || taskSeekRuns) Thread.Sleep(5);
         taskPlayRuns = true;
 
-        Thread t = new(() =>
+        Thread t = new(PlayThread)
         {
-            try
+            #if DEBUG
+            Name            = $"[#{PlayerId}] Playback",
+            #endif
+            Priority        = Config.Player.ThreadPriority,
+            IsBackground    = true
+        };
+
+        t.Start();
+    }
+
+    void PlayThread()
+    {
+        try
+        {
+            Engine.TimeBeginPeriod1();
+            Engine.ThreadExecutionStateBegin();
+
+            onBufferingStarted   = 0;
+            onBufferingCompleted = 0;
+            requiresBuffering    = true;
+
+            if (lastError != null)
             {
-                Engine.TimeBeginPeriod1();
-                NativeMethods.SetThreadExecutionState(NativeMethods.EXECUTION_STATE.ES_CONTINUOUS | NativeMethods.EXECUTION_STATE.ES_SYSTEM_REQUIRED | NativeMethods.EXECUTION_STATE.ES_DISPLAY_REQUIRED);
+                lastError = null;
+                UI(() => LastError = lastError);
+            }
 
-                onBufferingStarted   = 0;
-                onBufferingCompleted = 0;
-                requiresBuffering    = true;
-
-                if (LastError != null)
+            if (Config.Player.Usage == Usage.Audio || !Video.IsOpened)
+                ScreamerAudioOnly();
+            else
+            {
+                if (Config.Player.ZeroLatency)
+                    ScreamerZeroLatency();
+                else if (ReversePlayback)
                 {
-                    lastError = null;
-                    UI(() => LastError = LastError);
+                    shouldFlushNext = true;
+                    ScreamerReverse();
                 }
-
-                if (Config.Player.Usage == Usage.Audio || !Video.IsOpened)
-                    ScreamerAudioOnly();
                 else
                 {
-                    if (Config.Player.ZeroLatency)
-                        ScreamerZeroLatency();
-                    else if (ReversePlayback)
+                    shouldFlushPrev = true;
+                    ScreamerVASD();
+                }
+            }
+
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Playback failed ({e.Message})");
+            RaiseUnknownErrorOccurred($"Playback failed: {e.Message}", UnknownErrorType.Playback, e);
+        }
+        finally
+        {
+            if (vFrame != renderer.LastFrame)
+                VideoDecoder.DisposeFrame(vFrame);
+            vFrame = null;
+            for (int i = 0; i < subNum; i++)
+            {
+                sFrames[i] = null;
+            }
+
+            if (status == Status.Stopped)
+                decoder?.Initialize();
+            else if (decoder != null)
+            {
+                decoder.PauseOnQueueFull();
+                decoder.PauseDecoders();
+            }
+
+            Audio.ClearBuffer();
+            Engine.TimeEndPeriod1();
+            Engine.ThreadExecutionStateEnd();
+            stoppedWithError = null;
+
+            if (status == Status.Playing)
+            {
+                if (decoderHasEnded)
+                    status = Status.Ended;
+                else
+                {
+                    if (Video.IsOpened && VideoDemuxer.Interrupter.Timedout)
+                        stoppedWithError = "Timeout";
+                    else if (onBufferingStarted - 1 == onBufferingCompleted)
                     {
-                        shouldFlushNext = true;
-                        ScreamerReverse();
+                        stoppedWithError = "Playback stopped unexpectedly";
+                        OnBufferingCompleted("Buffering failed");
                     }
                     else
                     {
-                        shouldFlushPrev = true;
-                        Screamer();
-                    }
-                }
-
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"Playback failed ({ex.Message})");
-                RaiseUnknownErrorOccurred($"Playback failed: {ex.Message}", UnknownErrorType.Playback, ex);
-            }
-            finally
-            {
-                if (vFrame != renderer.LastFrame)
-                    VideoDecoder.DisposeFrame(vFrame);
-                vFrame = null;
-                for (int i = 0; i < subNum; i++)
-                {
-                    sFrames[i] = null;
-                }
-
-                if (renderer.FieldType != Vortice.Direct3D11.VideoFrameFormat.Progressive)
-                    renderer.SetFieldType(renderer.FieldType);
-
-                if (Status == Status.Stopped)
-                    decoder?.Initialize();
-                else if (decoder != null)
-                {
-                    decoder.PauseOnQueueFull();
-                    decoder.PauseDecoders();
-                }
-
-                Audio.ClearBuffer();
-                Engine.TimeEndPeriod1();
-                NativeMethods.SetThreadExecutionState(NativeMethods.EXECUTION_STATE.ES_CONTINUOUS);
-                stoppedWithError = null;
-
-                if (IsPlaying)
-                {
-                    if (decoderHasEnded)
-                        status = Status.Ended;
-                    else
-                    {
-                        if (Video.IsOpened && VideoDemuxer.Interrupter.Timedout)
-                            stoppedWithError = "Timeout";
-                        else if (onBufferingStarted - 1 == onBufferingCompleted)
+                        if (!ReversePlayback)
                         {
-                            stoppedWithError = "Playback stopped unexpectedly";
-                            OnBufferingCompleted("Buffering failed");
-                        }
-                        else
-                        {
-                            if (!ReversePlayback)
-                            {
-                                if (isLive || Math.Abs(Duration - CurTime) > 3 * 1000 * 10000)
-                                    stoppedWithError = "Playback stopped unexpectedly";
-                            }
-                            else if (CurTime > 3 * 1000 * 10000)
+                            if (isLive || Math.Abs(duration - curTime) > 3 * 1000 * 10000)
                                 stoppedWithError = "Playback stopped unexpectedly";
                         }
-
-                        status = Status.Paused;
+                        else if (curTime > 3 * 1000 * 10000)
+                            stoppedWithError = "Playback stopped unexpectedly";
                     }
+
+                    status = Status.Paused;
                 }
-
-                OnPlaybackStopped(stoppedWithError);
-                if (CanDebug) Log.Debug($"[SCREAMER] Finished (Status: {Status}, Error: {stoppedWithError})");
-
-                UI(() =>
-                {
-                    Status = Status;
-                    UpdateCurTime();
-                });
-
-                taskPlayRuns = false;
             }
-        });
-        t.Priority = Config.Player.ThreadPriority;
-        t.Name = $"[#{PlayerId}] Playback";
-        t.IsBackground = true;
-        t.Start();
+
+            OnPlaybackStopped(stoppedWithError);
+            if (CanDebug) Log.Debug($"[SCREAMER] Finished (Status: {status}, Error: {stoppedWithError})");
+
+            UI(() =>
+            {
+                Status = status;
+                SetCurTime();
+            });
+
+            taskPlayRuns = false;
+        }
     }
 
     /// <summary>
@@ -169,11 +173,11 @@ partial class Player
     {
         lock (lockActions)
         {
-            if (!CanPlay || Status == Status.Ended)
+            if (!canPlay || status == Status.Ended)
                 return;
 
             status = Status.Paused;
-            UI(() => Status = Status);
+            UI(() => Status = status);
 
             while (taskPlayRuns) Thread.Sleep(5);
         }
@@ -181,7 +185,7 @@ partial class Player
 
     public void TogglePlayPause()
     {
-        if (IsPlaying)
+        if (status == Status.Playing)
             Pause();
         else
             Play();
@@ -238,7 +242,7 @@ partial class Player
 
     private void Seek(int ms, bool forward, bool accurate)
     {
-        if (!CanPlay)
+        if (!canPlay)
             return;
 
         lock (seeks)
@@ -251,10 +255,12 @@ partial class Player
         // (Without this, seek is called with the same timestamp on successive calls, so it will seek to the same subtitle.)
         SubtitlesManager.SetCurrentTime(new TimeSpan(curTime));
 
+        // TBR: We consider UI here? (_CurTime loses sync)
+        // BufferedDuration = 0; Can't se this as it reads the demuxer's (which we didn't seek yet..)
         Raise(nameof(CurTime));
         Raise(nameof(RemainingDuration));
 
-        if (Status == Status.Playing)
+        if (status == Status.Playing)
             return;
 
         lock (seeks)
@@ -279,7 +285,7 @@ partial class Player
                 {
                     lock (seeks)
                     {
-                        if (!(seeks.TryPop(out seekData) && CanPlay && !IsPlaying))
+                        if (!(seeks.TryPop(out seekData) && canPlay && status != Status.Playing))
                         {
                             taskSeekRuns = false;
                             break;
@@ -288,39 +294,43 @@ partial class Player
                         seeks.Clear();
                     }
 
-                    if (Status == Status.Ended)
+                    if (status == Status.Ended)
                     {
                         wasEnded = true;
                         status = Status.Paused;
-                        UI(() => Status = Status);
+                        UI(() => Status = status);
                     }
 
                     for (int i = 0; i < subNum; i++)
                     {
-                        // Display subtitles from cache when seeking while paused
                         bool display = false;
-                        var cur = SubtitlesManager[i].GetCurrent();
-                        if (cur != null)
-                        {
-                            if (!string.IsNullOrEmpty(cur.DisplayText))
-                            {
-                                SubtitleDisplay(cur.DisplayText, i, cur.UseTranslated);
-                                display = true;
-                            }
-                            else if (cur.IsBitmap && cur.Bitmap != null)
-                            {
-                                SubtitleDisplay(cur.Bitmap, i);
-                                display = true;
-                            }
 
-                            if (display)
+                        if (Subtitles[i].Enabled)
+                        {
+                            // Display subtitles from cache when seeking while paused
+                            var cur = SubtitlesManager[i].GetCurrent();
+                            if (cur != null)
                             {
-                                sFramesPrev[i] = new SubtitlesFrame
+                                if (!string.IsNullOrEmpty(cur.DisplayText))
                                 {
-                                    timestamp = cur.StartTime.Ticks + Config.Subtitles[i].Delay,
-                                    duration = (uint)cur.Duration.TotalMilliseconds,
-                                    isTranslated = cur.UseTranslated
-                                };
+                                    SubtitleDisplay(cur.DisplayText, i, cur.UseTranslated);
+                                    display = true;
+                                }
+                                else if (cur.IsBitmap && cur.Bitmap != null)
+                                {
+                                    SubtitleDisplay(cur.Bitmap, i);
+                                    display = true;
+                                }
+
+                                if (display)
+                                {
+                                    sFramesPrev[i] = new SubtitlesFrame
+                                    {
+                                        timestamp = cur.StartTime.Ticks + Config.Subtitles[i].Delay,
+                                        duration = (uint)cur.Duration.TotalMilliseconds,
+                                        isTranslated = cur.UseTranslated
+                                    };
+                                }
                             }
                         }
 
@@ -369,6 +379,7 @@ partial class Player
                         else if (!ReversePlayback && CanPlay)
                         {
                             decoder.GetVideoFrame(seekData.accurate ? seekData.ms * (long)10000 : -1);
+                            ResetFrameStats();
                             ShowOneFrame();
                             VideoDemuxer.Start();
                             AudioDemuxer.Start();

@@ -69,7 +69,6 @@ public unsafe partial class DecoderContext : PluginHandler
     public string               Extension           => VideoDemuxer.Disposed ? AudioDemuxer.Extension : VideoDemuxer.Extension;
 
     // Demuxers
-    public Demuxer              MainDemuxer         { get; private set; }
     public Demuxer              AudioDemuxer        { get; private set; }
     public Demuxer              VideoDemuxer        { get; private set; }
     // Demuxer for external subtitles, currently not used for subtitles, just used for stream info

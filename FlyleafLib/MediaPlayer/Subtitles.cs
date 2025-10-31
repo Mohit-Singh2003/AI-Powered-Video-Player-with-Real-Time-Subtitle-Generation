@@ -494,11 +494,11 @@ public class Subtitle : NotifyPropertyChanged
     {
         UI(() =>
         {
-            StreamIndex = StreamIndex;
-            IsOpened = IsOpened;
-            Codec = Codec;
-            IsBitmap = IsBitmap;
-            EnabledASR = EnabledASR;
+            StreamIndex = _streamIndex;
+            IsOpened = _isOpened;
+            Codec = _codec;
+            IsBitmap = _isBitmap;
+            EnabledASR = _enabledASR;
         });
     }
 
