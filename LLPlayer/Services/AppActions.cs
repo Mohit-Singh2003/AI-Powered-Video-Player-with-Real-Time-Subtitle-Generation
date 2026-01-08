@@ -121,8 +121,6 @@ public class AppActions
         ];
     }
 
-    // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
-
     #region Command used in key
 
     public DelegateCommand CmdOpenNextFile => field ??= new(() =>
@@ -623,8 +621,6 @@ public class AppActions
     });
 
     #endregion
-
-    // ReSharper restore NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
 
     // TODO: L: make it command?
     public void SaveAllConfig()

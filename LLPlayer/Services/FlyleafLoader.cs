@@ -100,7 +100,7 @@ public static class FlyleafLoader
         EngineConfig engineConfig = new()
         {
 #if DEBUG
-            PluginsPath = @":Plugins\bin\Plugins.NET9",
+            PluginsPath = @":Plugins\bin\Plugins.NET10",
 #else
             PluginsPath = ":Plugins",
 #endif
