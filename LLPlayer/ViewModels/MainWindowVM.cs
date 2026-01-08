@@ -141,6 +141,9 @@ public class MainWindowVM : Bindable
         {
             if (!args.Success || args.IsSubtitles)
             {
+                if (!args.IsSubtitles)
+                    FL.Player.renderer?.ClearScreen(true);
+
                 return;
             }
 
@@ -157,6 +160,15 @@ public class MainWindowVM : Bindable
         if (App.CmdUrl != null)
         {
             FL.Player.OpenAsync(App.CmdUrl);
+        }
+
+        if (Engine.Config.FFmpegLoadProfile == Flyleaf.FFmpeg.LoadProfile.All)
+        {
+            Task.Run(() =>
+            {
+                Engine.Video.RefreshCapDevices();
+                Engine.Audio.RefreshCapDevices();
+            });
         }
     });
 
